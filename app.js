@@ -424,7 +424,36 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('- Поиск работает по названию породы и содержимому');
 });
 
-// --- SUPABASE CDN INJECT + LOAD CATS ---
+// --- Глобальный клиент и хелперы ---
+let supabase;
+
+function initializeSupabase() {
+    if (!supabase) {
+        const supabaseUrl = 'https://bdqezqqcehaxgowslfsp.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkcWV6cXFjZWhheGdvd3NsZnNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NDMyODEsImV4cCI6MjA2NjAxOTI4MX0.iQa2JWggo26_pz6uh6_JiofWtqt1shCXgD-khfkRr04';
+        supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+    }
+    return supabase;
+}
+
+function saveBookingToLocalStorage(catId, email) {
+    const bookings = JSON.parse(localStorage.getItem('catBookings') || '{}');
+    bookings[catId] = email;
+    localStorage.setItem('catBookings', JSON.stringify(bookings));
+}
+
+function getBookingsFromLocalStorage() {
+    return JSON.parse(localStorage.getItem('catBookings') || '{}');
+}
+
+function updateButtonState(catId) {
+    const button = document.querySelector(`button[data-cat-id='${catId}']`);
+    if (button) {
+        button.textContent = 'Забронировано';
+        button.disabled = true;
+    }
+}
+
 // --- SUPABASE CDN INJECT + LOAD CATS ---
 function ensureSupabaseAndLoadCats() {
     if (window.createClient) {
@@ -441,6 +470,7 @@ function ensureSupabaseAndLoadCats() {
         document.head.appendChild(script);
     } else {
         document.querySelector('script[src*="@supabase/supabase-js"]').addEventListener('load', function() {
+            console.log('Supabase JS загружен (через addEventListener)');
             loadCats();
         });
     }
@@ -453,10 +483,9 @@ if (document.readyState === 'loading') {
 }
 
 async function loadCats() {
-    const supabaseUrl = 'https://bdqezqqcehaxgowslfsp.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkcWV6cXFjZWhheGdvd3NsZnNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NDMyODEsImV4cCI6MjA2NjAxOTI4MX0.iQa2JWggo26_pz6uh6_JiofWtqt1shCXgD-khfkRr04';
-    const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+    const supabaseClient = initializeSupabase();
 
+    // Получаем элемент для вставки карточек
     let catList = document.getElementById('cat-list');
     if (!catList) {
         const main = document.getElementById('main');
@@ -466,8 +495,9 @@ async function loadCats() {
     }
     catList.innerHTML = '<h2 style="color:#4a90e2;text-align:center;">Кошки из Supabase</h2><p>Загрузка...</p>';
 
+    // Получаем данные из Supabase
     try {
-        const { data: cats, error } = await supabase.from('cats').select('name, breed, description, image_url');
+        const { data: cats, error } = await supabaseClient.from('cats').select('id, name, breed, description, image_url');
         if (error) {
             catList.innerHTML = '<p style="color:red">Ошибка загрузки данных: ' + error.message + '</p>';
             return;
@@ -476,7 +506,9 @@ async function loadCats() {
             catList.innerHTML = '<p>Нет данных о кошках.</p>';
             return;
         }
+        // Рендерим карточки
         catList.innerHTML = `<h2 style="color:#4a90e2;text-align:center;">Кошки из Supabase</h2><p style="text-align:center;">Найдено: ${cats.length}</p>`;
+        const bookings = getBookingsFromLocalStorage();
         cats.forEach(cat => {
             const card = document.createElement('div');
             card.className = 'cat-card card';
@@ -484,16 +516,22 @@ async function loadCats() {
             card.style.maxWidth = '400px';
             let imgSrc = (cat.image_url && typeof cat.image_url === 'string' && cat.image_url.trim()) ? cat.image_url : 'https://placehold.co/320x220?text=No+Image';
             card.innerHTML = `
-                <div class="card__body" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
-                    <img src="${imgSrc}" alt="${cat.name}" style="width:100%;max-width:320px;max-height:220px;object-fit:cover;border-radius:12px;box-shadow:0 2px 8px #0001;">
-                    <h3 style="margin:0 0 8px 0;">${cat.name}</h3>
-                    <p style="font-weight:bold;margin:0;">${cat.breed || ''}</p>
-                    <p style="margin:0 0 12px 0;">${cat.description || ''}</p>
-                    <button class="btn btn--primary" style="margin-top:8px;">Выбрать</button>
-                </div>
-            `;
-            const button = card.querySelector('button');
-            button.addEventListener('click', () => chooseCat(cat.id));
+                 <div class="card__body" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+                     <img src="${imgSrc}" alt="${cat.name}" style="width:100%;max-width:320px;max-height:220px;object-fit:cover;border-radius:12px;box-shadow:0 2px 8px #0001;">
+                     <h3 style="margin:0 0 8px 0;">${cat.name}</h3>
+                     <p style="font-weight:bold;margin:0;">${cat.breed || ''}</p>
+                     <p style="margin:0 0 12px 0;">${cat.description || ''}</p>
+                     <button class="btn btn--primary" style="margin-top:8px;" data-cat-id="${cat.id}">Выбрать</button>
+                 </div>
+             `;
+             const button = card.querySelector('button');
+             if (bookings[cat.id]) {
+                button.textContent = 'Забронировано';
+                button.disabled = true;
+             } else {
+                button.addEventListener('click', () => chooseCat(cat.id, cat.name));
+             }
+
             catList.appendChild(card);
         });
     } catch (e) {
@@ -502,52 +540,91 @@ async function loadCats() {
 }
 
 // --- CHOOSE CAT FUNCTION ---
-async function chooseCat(catId) {
-    try {
-        // Проверка Supabase
-        if (!window.supabase) {
-            alert('Supabase не инициализирован');
-            return;
-        }
-        const supabase = window.supabase;
-        // Получаем пользователя из Telegram WebApp
-        const tgUser = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user;
-        if (!tgUser) {
-            alert('Пользователь Telegram не найден. Откройте через Telegram WebApp.');
-            return;
-        }
-        const user_id = tgUser.id;
-        const username = tgUser.username || '';
-        // Получаем имя кошки по catId
-        const { data: catData, error: catError } = await supabase.from('cats').select('name').eq('id', catId).single();
-        if (catError || !catData) {
-            alert('Ошибка поиска кошки: ' + (catError ? catError.message : 'Не найдено'));
-            return;
-        }
-        const cat_name = catData.name;
-        // Проверяем, есть ли уже запись в bookings для этого пользователя
-        const { data: bookingData, error: bookingError } = await supabase.from('bookings').select('id').eq('user_id', user_id).maybeSingle();
-        if (bookingError) {
-            alert('Ошибка проверки бронирования: ' + bookingError.message);
-            return;
-        }
-        if (bookingData) {
-            alert('Вы уже записались на просмотр кошки');
-            return;
-        }
-        // Добавляем новую запись
-        const { error: insertError } = await supabase.from('bookings').insert({
-            cat_id: catId,
-            cat_name,
-            user_id,
-            username
-        });
-        if (insertError) {
-            alert('Ошибка записи на просмотр: ' + insertError.message);
-            return;
-        }
-        alert('Вы записаны на просмотр ' + cat_name + '!');
-    } catch (e) {
-        alert('Ошибка: ' + e.message);
+async function chooseCat(catId, catName) {
+    if (document.getElementById('booking-modal')) {
+        return;
     }
+
+    const modalOverlay = document.createElement('div');
+    modalOverlay.id = 'booking-modal-overlay';
+    modalOverlay.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0, 0, 0, 0.6); z-index: 1000;
+        display: flex; align-items: center; justify-content: center;
+    `;
+
+    const modal = document.createElement('div');
+    modal.id = 'booking-modal';
+    modal.style.cssText = `
+        background: white; padding: 24px; border-radius: 8px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2); width: 90%; max-width: 400px;
+        color: #333;
+    `;
+
+    modal.innerHTML = `
+        <h3 style="margin-top:0; margin-bottom: 16px; color: #1a1a1a;">Бронирование кошки</h3>
+        <p style="margin-bottom: 16px;">Вы выбрали: <strong>${catName}</strong>. Введите ваш email для подтверждения брони.</p>
+        <form id="booking-form">
+            <input type="email" id="booking-email" placeholder="your.email@example.com" required style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px;">
+            <div id="booking-error" style="color: red; margin-bottom: 12px; min-height: 1.2em; font-size: 0.9em;"></div>
+            <button type="submit" class="btn btn--primary" style="width: 100%;">Забронировать</button>
+        </form>
+    `;
+
+    modalOverlay.appendChild(modal);
+    document.body.appendChild(modalOverlay);
+
+    const form = document.getElementById('booking-form');
+    const emailInput = document.getElementById('booking-email');
+    const errorDiv = document.getElementById('booking-error');
+
+    modalOverlay.addEventListener('click', (e) => {
+        if (e.target === modalOverlay) {
+            document.body.removeChild(modalOverlay);
+        }
+    });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorDiv.textContent = '';
+        const email = emailInput.value.trim();
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            errorDiv.textContent = 'Пожалуйста, введите корректный email.';
+            return;
+        }
+
+        const supabaseClient = initializeSupabase();
+
+        try {
+            const { data: existingBooking, error: checkError } = await supabaseClient
+                .from('bookings')
+                .select('id')
+                .eq('cat_id', catId)
+                .eq('email', email)
+                .maybeSingle();
+
+            if (checkError) throw checkError;
+
+            if (existingBooking) {
+                errorDiv.textContent = 'Вы уже бронировали эту кошку с этим email.';
+                return;
+            }
+
+            const { error: insertError } = await supabaseClient
+                .from('bookings')
+                .insert({ cat_id: catId, cat_name: catName, email: email });
+
+            if (insertError) throw insertError;
+
+            alert(`Спасибо! Вы забронировали кошку ${catName}`);
+            saveBookingToLocalStorage(catId, email);
+            updateButtonState(catId);
+            document.body.removeChild(modalOverlay);
+
+        } catch (error) {
+            errorDiv.textContent = `Ошибка: ${error.message}`;
+        }
+    });
 }
