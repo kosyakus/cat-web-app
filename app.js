@@ -416,7 +416,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    optimizePerformance();
     
     console.log('🐱 Породы кошек - приложение загружено успешно!');
     console.log('Доступные команды:');
@@ -424,3 +423,131 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('- Esc для очистки поиска');
     console.log('- Поиск работает по названию породы и содержимому');
 });
+
+// --- SUPABASE CDN INJECT + LOAD CATS ---
+// --- SUPABASE CDN INJECT + LOAD CATS ---
+function ensureSupabaseAndLoadCats() {
+    if (window.createClient) {
+        loadCats();
+        return;
+    }
+    if (!document.querySelector('script[src*="@supabase/supabase-js"]')) {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+        script.async = true;
+        script.onload = function() {
+            loadCats();
+        };
+        document.head.appendChild(script);
+    } else {
+        document.querySelector('script[src*="@supabase/supabase-js"]').addEventListener('load', function() {
+            loadCats();
+        });
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', ensureSupabaseAndLoadCats);
+} else {
+    ensureSupabaseAndLoadCats();
+}
+
+async function loadCats() {
+    const supabaseUrl = 'https://bdqezqqcehaxgowslfsp.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkcWV6cXFjZWhheGdvd3NsZnNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NDMyODEsImV4cCI6MjA2NjAxOTI4MX0.iQa2JWggo26_pz6uh6_JiofWtqt1shCXgD-khfkRr04';
+    const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+    let catList = document.getElementById('cat-list');
+    if (!catList) {
+        const main = document.getElementById('main');
+        catList = document.createElement('div');
+        catList.id = 'cat-list';
+        main.insertBefore(catList, main.firstChild);
+    }
+    catList.innerHTML = '<h2 style="color:#4a90e2;text-align:center;">Кошки из Supabase</h2><p>Загрузка...</p>';
+
+    try {
+        const { data: cats, error } = await supabase.from('cats').select('name, breed, description, image_url');
+        if (error) {
+            catList.innerHTML = '<p style="color:red">Ошибка загрузки данных: ' + error.message + '</p>';
+            return;
+        }
+        if (!cats || cats.length === 0) {
+            catList.innerHTML = '<p>Нет данных о кошках.</p>';
+            return;
+        }
+        catList.innerHTML = `<h2 style="color:#4a90e2;text-align:center;">Кошки из Supabase</h2><p style="text-align:center;">Найдено: ${cats.length}</p>`;
+        cats.forEach(cat => {
+            const card = document.createElement('div');
+            card.className = 'cat-card card';
+            card.style.margin = '20px auto';
+            card.style.maxWidth = '400px';
+            let imgSrc = (cat.image_url && typeof cat.image_url === 'string' && cat.image_url.trim()) ? cat.image_url : 'https://placehold.co/320x220?text=No+Image';
+            card.innerHTML = `
+                <div class="card__body" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+                    <img src="${imgSrc}" alt="${cat.name}" style="width:100%;max-width:320px;max-height:220px;object-fit:cover;border-radius:12px;box-shadow:0 2px 8px #0001;">
+                    <h3 style="margin:0 0 8px 0;">${cat.name}</h3>
+                    <p style="font-weight:bold;margin:0;">${cat.breed || ''}</p>
+                    <p style="margin:0 0 12px 0;">${cat.description || ''}</p>
+                    <button class="btn btn--primary" style="margin-top:8px;">Выбрать</button>
+                </div>
+            `;
+            const button = card.querySelector('button');
+            button.addEventListener('click', () => chooseCat(cat.id));
+            catList.appendChild(card);
+        });
+    } catch (e) {
+        catList.innerHTML = '<p style="color:red">Ошибка выполнения loadCats: ' + e.message + '</p>';
+    }
+}
+
+// --- CHOOSE CAT FUNCTION ---
+async function chooseCat(catId) {
+    try {
+        // Проверка Supabase
+        if (!window.supabase) {
+            alert('Supabase не инициализирован');
+            return;
+        }
+        const supabase = window.supabase;
+        // Получаем пользователя из Telegram WebApp
+        const tgUser = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user;
+        if (!tgUser) {
+            alert('Пользователь Telegram не найден. Откройте через Telegram WebApp.');
+            return;
+        }
+        const user_id = tgUser.id;
+        const username = tgUser.username || '';
+        // Получаем имя кошки по catId
+        const { data: catData, error: catError } = await supabase.from('cats').select('name').eq('id', catId).single();
+        if (catError || !catData) {
+            alert('Ошибка поиска кошки: ' + (catError ? catError.message : 'Не найдено'));
+            return;
+        }
+        const cat_name = catData.name;
+        // Проверяем, есть ли уже запись в bookings для этого пользователя
+        const { data: bookingData, error: bookingError } = await supabase.from('bookings').select('id').eq('user_id', user_id).maybeSingle();
+        if (bookingError) {
+            alert('Ошибка проверки бронирования: ' + bookingError.message);
+            return;
+        }
+        if (bookingData) {
+            alert('Вы уже записались на просмотр кошки');
+            return;
+        }
+        // Добавляем новую запись
+        const { error: insertError } = await supabase.from('bookings').insert({
+            cat_id: catId,
+            cat_name,
+            user_id,
+            username
+        });
+        if (insertError) {
+            alert('Ошибка записи на просмотр: ' + insertError.message);
+            return;
+        }
+        alert('Вы записаны на просмотр ' + cat_name + '!');
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
