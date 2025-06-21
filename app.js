@@ -416,6 +416,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    optimizePerformance();
+    
     
     console.log('🐱 Породы кошек - приложение загружено успешно!');
     console.log('Доступные команды:');
@@ -476,45 +478,48 @@ function ensureSupabaseAndLoadCats() {
     }
 }
 
+// Гарантируем вызов только после DOMContentLoaded
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', ensureSupabaseAndLoadCats);
 } else {
     ensureSupabaseAndLoadCats();
 }
 
+// --- LOAD CATS FUNCTION ---
 async function loadCats() {
     const supabaseClient = initializeSupabase();
 
-    // Получаем элемент для вставки карточек
     let catList = document.getElementById('cat-list');
     if (!catList) {
         const main = document.getElementById('main');
         catList = document.createElement('div');
         catList.id = 'cat-list';
+        catList.style.margin = '40px 0';
         main.insertBefore(catList, main.firstChild);
     }
     catList.innerHTML = '<h2 style="color:#4a90e2;text-align:center;">Кошки из Supabase</h2><p>Загрузка...</p>';
 
-    // Получаем данные из Supabase
     try {
         const { data: cats, error } = await supabaseClient.from('cats').select('id, name, breed, description, image_url');
         if (error) {
-            catList.innerHTML = '<p style="color:red">Ошибка загрузки данных: ' + error.message + '</p>';
+            catList.innerHTML = `<p style="color:red">Ошибка загрузки данных: ${error.message}</p>`;
             return;
         }
         if (!cats || cats.length === 0) {
             catList.innerHTML = '<p>Нет данных о кошках.</p>';
             return;
         }
-        // Рендерим карточки
+        
         catList.innerHTML = `<h2 style="color:#4a90e2;text-align:center;">Кошки из Supabase</h2><p style="text-align:center;">Найдено: ${cats.length}</p>`;
         const bookings = getBookingsFromLocalStorage();
+        
         cats.forEach(cat => {
             const card = document.createElement('div');
             card.className = 'cat-card card';
             card.style.margin = '20px auto';
             card.style.maxWidth = '400px';
-            let imgSrc = (cat.image_url && typeof cat.image_url === 'string' && cat.image_url.trim()) ? cat.image_url : 'https://placehold.co/320x220?text=No+Image';
+            let imgSrc = (cat.image_url && cat.image_url.trim()) ? cat.image_url : 'https://placehold.co/320x220?text=No+Image';
+            
             card.innerHTML = `
                  <div class="card__body" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
                      <img src="${imgSrc}" alt="${cat.name}" style="width:100%;max-width:320px;max-height:220px;object-fit:cover;border-radius:12px;box-shadow:0 2px 8px #0001;">
@@ -524,18 +529,19 @@ async function loadCats() {
                      <button class="btn btn--primary" style="margin-top:8px;" data-cat-id="${cat.id}">Выбрать</button>
                  </div>
              `;
-             const button = card.querySelector('button');
-             if (bookings[cat.id]) {
+             
+            const button = card.querySelector('button');
+            if (bookings[cat.id]) {
                 button.textContent = 'Забронировано';
                 button.disabled = true;
-             } else {
+            } else {
                 button.addEventListener('click', () => chooseCat(cat.id, cat.name));
-             }
+            }
 
             catList.appendChild(card);
         });
     } catch (e) {
-        catList.innerHTML = '<p style="color:red">Ошибка выполнения loadCats: ' + e.message + '</p>';
+        catList.innerHTML = `<p style="color:red">Ошибка выполнения loadCats: ${e.message}</p>`;
     }
 }
 
@@ -628,3 +634,4 @@ async function chooseCat(catId, catName) {
         }
     });
 }
+
