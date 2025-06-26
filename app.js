@@ -403,235 +403,175 @@ document.addEventListener('DOMContentLoaded', function() {
     // Performance optimization - lazy load content
     function optimizePerformance() {
         // Defer non-critical animations
-        requestIdleCallback(() => {
+        setTimeout(() => {
             document.querySelectorAll('.breed-card').forEach(card => {
                 card.addEventListener('mouseenter', function() {
                     this.style.willChange = 'transform, box-shadow';
                 });
-                
                 card.addEventListener('mouseleave', function() {
                     this.style.willChange = 'auto';
                 });
             });
-        });
+        }, 0);
     }
     
     optimizePerformance();
-    
     
     console.log('🐱 Породы кошек - приложение загружено успешно!');
     console.log('Доступные команды:');
     console.log('- Ctrl + ↓/↑ для навигации по разделам');
     console.log('- Esc для очистки поиска');
     console.log('- Поиск работает по названию породы и содержимому');
-});
-
-// --- Глобальный клиент и хелперы ---
-let supabase;
-
-function initializeSupabase() {
-    if (!supabase) {
-        const supabaseUrl = 'https://bdqezqqcehaxgowslfsp.supabase.co';
-        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkcWV6cXFjZWhheGdvd3NsZnNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NDMyODEsImV4cCI6MjA2NjAxOTI4MX0.iQa2JWggo26_pz6uh6_JiofWtqt1shCXgD-khfkRr04';
-        supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
-    }
-    return supabase;
-}
-
-function saveBookingToLocalStorage(catId, email) {
-    const bookings = JSON.parse(localStorage.getItem('catBookings') || '{}');
-    bookings[catId] = email;
-    localStorage.setItem('catBookings', JSON.stringify(bookings));
-}
-
-function getBookingsFromLocalStorage() {
-    return JSON.parse(localStorage.getItem('catBookings') || '{}');
-}
-
-function updateButtonState(catId) {
-    const button = document.querySelector(`button[data-cat-id='${catId}']`);
-    if (button) {
-        button.textContent = 'Забронировано';
-        button.disabled = true;
-    }
-}
-
-// --- SUPABASE CDN INJECT + LOAD CATS ---
-function ensureSupabaseAndLoadCats() {
-    if (window.createClient) {
-        loadCats();
-        return;
-    }
-    if (!document.querySelector('script[src*="@supabase/supabase-js"]')) {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-        script.async = true;
-        script.onload = function() {
-            loadCats();
-        };
-        document.head.appendChild(script);
-    } else {
-        document.querySelector('script[src*="@supabase/supabase-js"]').addEventListener('load', function() {
-            console.log('Supabase JS загружен (через addEventListener)');
-            loadCats();
-        });
-    }
-}
-
-// Гарантируем вызов только после DOMContentLoaded
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', ensureSupabaseAndLoadCats);
-} else {
-    ensureSupabaseAndLoadCats();
-}
-
-// --- LOAD CATS FUNCTION ---
-async function loadCats() {
-    const supabaseClient = initializeSupabase();
-
-    let catList = document.getElementById('cat-list');
-    if (!catList) {
-        const main = document.getElementById('main');
-        catList = document.createElement('div');
-        catList.id = 'cat-list';
-        catList.style.margin = '40px 0';
-        main.insertBefore(catList, main.firstChild);
-    }
-    catList.innerHTML = '<h2 style="color:#4a90e2;text-align:center;">Кошки из Supabase</h2><p>Загрузка...</p>';
-
-    try {
-        const { data: cats, error } = await supabaseClient.from('cats').select('id, name, breed, description, image_url');
-        if (error) {
-            catList.innerHTML = `<p style="color:red">Ошибка загрузки данных: ${error.message}</p>`;
+    
+    // === SUPABASE: Вставка фото в breed-card (гарантированно работает, если supabase-js подключён в <head>) ===
+    const SUPABASE_URL = 'https://knognhzsgsjkucqochfo.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtub2duaHpzZ3Nqa3VjcW9jaGZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA5NjkyOTYsImV4cCI6MjA2NjU0NTI5Nn0.lgM32YHiUtVVdf5nAuaCxe7EYhfxZqz5Hx1KE5Pz6SU';
+    async function fetchAndInsertImages() {
+        if (!window.supabase || !window.supabase.createClient) {
+            console.error('Supabase JS не подключён! Добавьте <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script> в <head>');
             return;
         }
-        if (!cats || cats.length === 0) {
-            catList.innerHTML = '<p>Нет данных о кошках.</p>';
-            return;
-        }
-        
-        catList.innerHTML = `<h2 style="color:#4a90e2;text-align:center;">Кошки из Supabase</h2><p style="text-align:center;">Найдено: ${cats.length}</p>`;
-        const bookings = getBookingsFromLocalStorage();
-        
-        cats.forEach(cat => {
-            const card = document.createElement('div');
-            card.className = 'cat-card card';
-            card.style.margin = '20px auto';
-            card.style.maxWidth = '400px';
-            let imgSrc = (cat.image_url && cat.image_url.trim()) ? cat.image_url : 'https://placehold.co/320x220?text=No+Image';
-            
-            card.innerHTML = `
-                 <div class="card__body" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
-                     <img src="${imgSrc}" alt="${cat.name}" style="width:100%;max-width:320px;max-height:220px;object-fit:cover;border-radius:12px;box-shadow:0 2px 8px #0001;">
-                     <h3 style="margin:0 0 8px 0;">${cat.name}</h3>
-                     <p style="font-weight:bold;margin:0;">${cat.breed || ''}</p>
-                     <p style="margin:0 0 12px 0;">${cat.description || ''}</p>
-                     <button class="btn btn--primary" style="margin-top:8px;" data-cat-id="${cat.id}">Выбрать</button>
-                 </div>
-             `;
-             
-            const button = card.querySelector('button');
-            if (bookings[cat.id]) {
-                button.textContent = 'Забронировано';
-                button.disabled = true;
-            } else {
-                button.addEventListener('click', () => chooseCat(cat.id, cat.name));
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const { data: cats, error } = await supabase.from('cats').select('name, image_url');
+        if (error || !cats) return;
+        document.querySelectorAll('.breed-card').forEach(card => {
+            const titleEl = card.querySelector('.breed-card__title');
+            if (!titleEl) return;
+            const breedName = titleEl.textContent.trim().toLowerCase();
+            const cat = cats.find(c => c.name && breedName.includes(c.name.trim().toLowerCase()) && c.image_url);
+            // Для отладки:
+            console.log('[SUPABASE IMG]', 'breedName:', breedName, 'matched:', cat && cat.name, 'img:', cat && cat.image_url);
+            if (cat) {
+                const cardBody = card.querySelector('.card__body');
+                if (!cardBody) return;
+                let img = cardBody.querySelector('.breed-card__img');
+                if (!img) {
+                    img = document.createElement('img');
+                    img.className = 'breed-card__img';
+                    img.style = 'width:100%;max-width:250px;border-radius:12px;object-fit:cover;background:#f3f3f3;min-height:180px;box-shadow:0 2px 12px rgba(0,0,0,0.07);margin-bottom:16px;display:block;';
+                    cardBody.insertBefore(img, cardBody.firstChild);
+                }
+                img.src = cat.image_url;
+                img.alt = cat.name;
+                img.onerror = function() { this.src = 'https://placekitten.com/250/180'; };
             }
-
-            catList.appendChild(card);
         });
-    } catch (e) {
-        catList.innerHTML = `<p style="color:red">Ошибка выполнения loadCats: ${e.message}</p>`;
     }
-}
-
-// --- CHOOSE CAT FUNCTION ---
-async function chooseCat(catId, catName) {
-    if (document.getElementById('booking-modal')) {
-        return;
+    fetchAndInsertImages();
+    
+    // === Кнопка "Выбрать" и форма email для бронирования кошки ===
+    const BOOKINGS_TABLE = 'bookings';
+    function isValidEmail(email) {
+        return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
     }
-
-    const modalOverlay = document.createElement('div');
-    modalOverlay.id = 'booking-modal-overlay';
-    modalOverlay.style.cssText = `
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0, 0, 0, 0.6); z-index: 1000;
-        display: flex; align-items: center; justify-content: center;
-    `;
-
-    const modal = document.createElement('div');
-    modal.id = 'booking-modal';
-    modal.style.cssText = `
-        background: white; padding: 24px; border-radius: 8px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2); width: 90%; max-width: 400px;
-        color: #333;
-    `;
-
-    modal.innerHTML = `
-        <h3 style="margin-top:0; margin-bottom: 16px; color: #1a1a1a;">Бронирование кошки</h3>
-        <p style="margin-bottom: 16px;">Вы выбрали: <strong>${catName}</strong>. Введите ваш email для подтверждения брони.</p>
-        <form id="booking-form">
-            <input type="email" id="booking-email" placeholder="your.email@example.com" required style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px;">
-            <div id="booking-error" style="color: red; margin-bottom: 12px; min-height: 1.2em; font-size: 0.9em;"></div>
-            <button type="submit" class="btn btn--primary" style="width: 100%;">Забронировать</button>
-        </form>
-    `;
-
-    modalOverlay.appendChild(modal);
-    document.body.appendChild(modalOverlay);
-
-    const form = document.getElementById('booking-form');
-    const emailInput = document.getElementById('booking-email');
-    const errorDiv = document.getElementById('booking-error');
-
-    modalOverlay.addEventListener('click', (e) => {
-        if (e.target === modalOverlay) {
-            document.body.removeChild(modalOverlay);
-        }
-    });
-
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        errorDiv.textContent = '';
-        const email = emailInput.value.trim();
-
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            errorDiv.textContent = 'Пожалуйста, введите корректный email.';
+    function getBookedEmail(catId) {
+        return localStorage.getItem('cat_booking_' + catId);
+    }
+    function setBookedEmail(catId, email) {
+        localStorage.setItem('cat_booking_' + catId, email);
+    }
+    // Получаем id и name для каждой карточки из Supabase cats (используем уже загруженные данные, если есть)
+    let supabaseCatsCache = null;
+    async function getSupabaseCats() {
+        if (supabaseCatsCache) return supabaseCatsCache;
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const { data: cats, error } = await supabase.from('cats').select('id, name');
+        if (error || !cats) return [];
+        supabaseCatsCache = cats;
+        return cats;
+    }
+    async function handleBookingClick(card, breedName) {
+        // Получаем id и name кошки из Supabase
+        const cats = await getSupabaseCats();
+        const cat = cats.find(c => breedName.includes(c.name.trim().toLowerCase()));
+        if (!cat) {
+            alert('Ошибка: не удалось найти кошку в базе.');
             return;
         }
-
-        const supabaseClient = initializeSupabase();
-
-        try {
-            const { data: existingBooking, error: checkError } = await supabaseClient
-                .from('bookings')
-                .select('id')
-                .eq('cat_id', catId)
-                .eq('email', email)
-                .maybeSingle();
-
-            if (checkError) throw checkError;
-
-            if (existingBooking) {
-                errorDiv.textContent = 'Вы уже бронировали эту кошку с этим email.';
+        // Проверяем localStorage
+        const bookedEmail = getBookedEmail(cat.id);
+        if (bookedEmail) {
+            alert('Вы уже бронировали эту кошку с email: ' + bookedEmail);
+            return;
+        }
+        // Если форма уже есть — не добавляем повторно
+        if (card.querySelector('.booking-form')) return;
+        // Создаём форму
+        const form = document.createElement('form');
+        form.className = 'booking-form';
+        form.style = 'margin-top:16px;display:flex;gap:8px;align-items:center;';
+        form.innerHTML = `
+            <input type="email" class="form-control" placeholder="Ваш email" required style="flex:1;min-width:180px;">
+            <button type="submit" class="btn btn--primary">Подтвердить</button>
+            <span class="booking-error" style="color:red;font-size:13px;margin-left:8px;"></span>
+        `;
+        const emailInput = form.querySelector('input');
+        const errorSpan = form.querySelector('.booking-error');
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const email = emailInput.value.trim();
+            if (!isValidEmail(email)) {
+                errorSpan.textContent = 'Введите корректный email';
                 return;
             }
-
-            const { error: insertError } = await supabaseClient
-                .from('bookings')
-                .insert({ cat_id: catId, cat_name: catName, email: email });
-
-            if (insertError) throw insertError;
-
-            alert(`Спасибо! Вы забронировали кошку ${catName}`);
-            saveBookingToLocalStorage(catId, email);
-            updateButtonState(catId);
-            document.body.removeChild(modalOverlay);
-
-        } catch (error) {
-            errorDiv.textContent = `Ошибка: ${error.message}`;
-        }
+            errorSpan.textContent = '';
+            // Проверяем, не бронировали ли уже эту кошку с этим email
+            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            const { data: existing } = await supabase
+                .from(BOOKINGS_TABLE)
+                .select('id')
+                .eq('cat_id', cat.id)
+                .eq('email', email);
+            if (existing && existing.length > 0) {
+                errorSpan.textContent = 'Этот email уже бронировал эту кошку';
+                return;
+            }
+            // Сохраняем бронь
+            const { error } = await supabase
+                .from(BOOKINGS_TABLE)
+                .insert({ cat_id: cat.id, cat_name: cat.name, email });
+            if (error) {
+                errorSpan.textContent = 'Ошибка бронирования: ' + error.message;
+                return;
+            }
+            setBookedEmail(cat.id, email);
+            alert('Спасибо! Вы забронировали кошку ' + cat.name);
+            // Меняем кнопку на "Забронировано"
+            const btn = card.querySelector('.booking-btn');
+            if (btn) {
+                btn.textContent = 'Забронировано';
+                btn.disabled = true;
+                btn.classList.add('btn--disabled');
+            }
+            form.remove();
+        });
+        card.appendChild(form);
+        emailInput.focus();
+    }
+    // Добавляем кнопку "Выбрать" под каждую карточку
+    document.querySelectorAll('.breed-card').forEach(async card => {
+        const titleEl = card.querySelector('.breed-card__title');
+        if (!titleEl) return;
+        const breedName = titleEl.textContent.trim().toLowerCase();
+        // Получаем id кошки из Supabase (по name)
+        const cats = await getSupabaseCats();
+        const cat = cats.find(c => breedName.includes(c.name.trim().toLowerCase()));
+        // Если не нашли — не добавляем кнопку
+        if (!cat) return;
+        // Проверяем localStorage
+        const bookedEmail = getBookedEmail(cat.id);
+        // Если кнопка уже есть — не добавляем повторно
+        if (card.querySelector('.booking-btn')) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn--primary booking-btn';
+        btn.style = 'margin-top:16px;width:100%;';
+        btn.textContent = bookedEmail ? 'Забронировано' : 'Выбрать';
+        btn.disabled = !!bookedEmail;
+        if (bookedEmail) btn.classList.add('btn--disabled');
+        btn.addEventListener('click', function() {
+            handleBookingClick(card, breedName);
+        });
+        card.appendChild(btn);
     });
-}
-
+});
